@@ -1,33 +1,39 @@
 package org.gio.iam.audit;
 
+import lombok.RequiredArgsConstructor;
+import org.gio.iam.event.AuditEvent;
+import org.gio.iam.repository.AuditLogRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.time.LocalDateTime;
 import java.util.List;
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/admin")
+@RequiredArgsConstructor // Injects Repository and Publisher
 public class AdminController {
 
-    // This is the Gatekeeper. Only users with ROLE_ADMIN can pass.
+    private final AuditLogRepository auditLogRepository;
+    private final ApplicationEventPublisher eventPublisher;
+
     @GetMapping("/audit-logs")
     @PreAuthorize("hasRole('ADMIN')")
     public List<AuditLog> getAuditLogs(Authentication authentication) {
 
-        // Return dummy data to prove it works
-        return List.of(
-                new AuditLog(
-                        UUID.randomUUID(),
-                        authentication.getName(), // This comes from 'preferred_username' in our Converter
-                        "VIEW_LOGS",
-                        LocalDateTime.now(),
-                        "User accessed the audit log endpoint"
-                )
-        );
+        // 1. ASYNC LOGGING: Fire and forget!
+        // We log that the admin accessed this resource.
+        eventPublisher.publishEvent(new AuditEvent(
+                authentication.getName(), // User
+                "VIEW_AUDIT_LOGS",        // Action
+                "AdminController",        // Resource
+                true                      // Success
+        ));
+
+        // 2. REAL DATA: Fetch from the DB
+        return auditLogRepository.findAll();
     }
 }

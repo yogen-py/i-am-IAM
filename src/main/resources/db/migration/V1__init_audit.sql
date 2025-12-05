@@ -1,7 +1,9 @@
 CREATE TABLE audit_logs (
                             id UUID PRIMARY KEY,
-                            user_id VARCHAR(255) NOT NULL,
+                            username VARCHAR(255) NOT NULL,
                             action VARCHAR(255) NOT NULL,
+                            resource VARCHAR(255),
+                            success BOOLEAN,
                             timestamp TIMESTAMP NOT NULL,
-                            details TEXT
+                            details VARCHAR(1024)
 );
