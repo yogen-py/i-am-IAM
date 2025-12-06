@@ -1,1 +1,71 @@
+version: '3.8'
 services:
+  # 1. Keycloak Identity Provider
+  keycloak:
+    image: quay.io/keycloak/keycloak:23.0.0
+    container_name: iam_keycloak
+    command: start-dev
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres_keycloak:5432/keycloak_db
+      KC_DB_USERNAME: keycloak_user
+      KC_DB_PASSWORD: keycloak_password
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres_keycloak
+    networks:
+      - iam_network
+  # 2. Database for Keycloak (System DB)
+  postgres_keycloak:
+    image: postgres:15
+    container_name: iam_postgres_keycloak
+    environment:
+      POSTGRES_DB: keycloak_db
+      POSTGRES_USER: keycloak_user
+      POSTGRES_PASSWORD: keycloak_password
+    volumes:
+      - pg_keycloak_data:/var/lib/postgresql/data
+    networks:
+      - iam_network
+  # 3. Database for Spring Boot App (App DB)
+  postgres_app:
+    image: postgres:15
+    container_name: iam_postgres_app
+    environment:
+      POSTGRES_DB: app_db
+      POSTGRES_USER: app_user
+      POSTGRES_PASSWORD: app_password
+    ports:
+      - "5432:5432" # Exposed for local dev access if needed
+    volumes:
+      - pg_app_data:/var/lib/postgresql/data
+    networks:
+      - iam_network
+  # 4. PGAdmin (Optional - GUI for DBs)
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: iam_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres_keycloak
+      - postgres_app
+    networks:
+      - iam_network
+  redis:
+    image: redis:alpine
+    container_name: iam-redis
+    ports:
+      - "6379:6379"
+networks:
+  iam_network:
+    driver: bridge
+volumes:
+  pg_keycloak_data:
+  pg_app_data:

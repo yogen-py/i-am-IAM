@@ -24,8 +24,7 @@ public class AdminController {
     @PreAuthorize("hasRole('ADMIN')")
     public List<AuditLog> getAuditLogs(Authentication authentication) {
 
-        // 1. ASYNC LOGGING: Fire and forget!
-        // We log that the admin accessed this resource.
+
         eventPublisher.publishEvent(new AuditEvent(
                 authentication.getName(), // User
                 "VIEW_AUDIT_LOGS",        // Action
@@ -33,7 +32,6 @@ public class AdminController {
                 true                      // Success
         ));
 
-        // 2. REAL DATA: Fetch from the DB
         return auditLogRepository.findAll();
     }
 }
