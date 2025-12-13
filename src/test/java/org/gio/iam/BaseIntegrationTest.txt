@@ -1,0 +1,61 @@
+package org.gio.iam;
+
+import dasniko.testcontainers.keycloak.KeycloakContainer;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
+
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@Testcontainers
+public abstract class BaseIntegrationTest {
+
+    // --- RE-ADD THIS BLOCK ---
+    static {
+        // 1. Force HttpClient5 (Now that the library is present, this will work)
+        System.setProperty("transport.type", "httpclient5");
+
+        // 2. Standard WSL2 Socket
+        System.setProperty("docker.host", "unix:///var/run/docker.sock");
+
+        // 3. Disable Ryuk to prevent "Reaper" connection errors
+        System.setProperty("testcontainers.ryuk.disabled", "true");
+        System.setProperty("testcontainers.checks.disable", "true");
+    }
+    // -------------------------
+
+    @LocalServerPort
+    protected int port;
+
+    @Container
+    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15-alpine");
+
+    @Container
+    static GenericContainer<?> redis = new GenericContainer<>(DockerImageName.parse("redis:alpine"))
+            .withExposedPorts(6379);
+
+    @Container
+    static KeycloakContainer keycloak = new KeycloakContainer("quay.io/keycloak/keycloak:23.0.0")
+            .withRealmImportFile("testrealm-export.json");
+
+    @DynamicPropertySource
+    static void configureProperties(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", postgres::getJdbcUrl);
+        registry.add("spring.datasource.username", postgres::getUsername);
+        registry.add("spring.datasource.password", postgres::getPassword);
+
+        registry.add("spring.data.redis.host", redis::getHost);
+        registry.add("spring.data.redis.port", redis::getFirstMappedPort);
+
+        String authServerUrl = keycloak.getAuthServerUrl();
+        registry.add("spring.security.oauth2.resourceserver.jwt.issuer-uri",
+                () -> authServerUrl + "/realms/test-realm");
+        registry.add("spring.security.oauth2.resourceserver.jwt.jwk-set-uri",
+                () -> authServerUrl + "/realms/test-realm/protocol/openid-connect/certs");
+    }
+}

@@ -1,0 +1,113 @@
+package org.gio.iam;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.web.reactive.function.BodyInserters;
+import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+public class AuditFlowTest extends BaseIntegrationTest {
+
+    private WebClient webClient;
+    private static final String REALM_NAME = "my-realm";
+
+    // NOTE: Replace with the actual client ID/secret/user/password from your JSON export
+    private static final String TEST_CLIENT_ID = "test-client";
+    private static final String TEST_CLIENT_SECRET = "test-secret";
+    private static final String ADMIN_USERNAME = "testuser";
+    private static final String ADMIN_PASSWORD = "testpassword";
+
+    @BeforeEach
+    void setup() {
+        // Initialize WebClient to talk to our Spring Boot App on the random port
+        webClient = WebClient.builder()
+                .baseUrl("http://localhost:" + port)
+                .build();
+    }
+
+    // Helper to acquire a token from the Testcontainer Keycloak instance
+    private String getAccessToken(String username, String password) {
+        WebClient keycloakClient = WebClient.builder()
+                .baseUrl(keycloak.getAuthServerUrl())
+                .build();
+
+        MultiValueMap<String, String> formData = new LinkedMultiValueMap<>();
+        formData.add("grant_type", "password");
+        formData.add("client_id", TEST_CLIENT_ID);
+        formData.add("client_secret", TEST_CLIENT_SECRET);
+        formData.add("username", username);
+        formData.add("password", password);
+
+        JsonNode result = keycloakClient.post()
+                .uri("/realms/{realmName}/protocol/openid-connect/token", REALM_NAME)
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                .body(BodyInserters.fromFormData(formData))
+                .retrieve()
+                .bodyToMono(JsonNode.class)
+                .block();
+
+        assertNotNull(result, "Failed to get token from Keycloak.");
+        return result.get("access_token").asText();
+    }
+
+    // Test 1: Admin Access (Happy Path)
+    @Test
+    void test1_adminAccessSucceedsWithValidToken() {
+        String token = getAccessToken(ADMIN_USERNAME, ADMIN_PASSWORD);
+
+        webClient.get()
+                .uri("/admin/audit-logs")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .retrieve()
+                .toBodilessEntity()
+                .block()
+                .getStatusCode()
+                .is2xxSuccessful(); // Assert 200 OK
+    }
+
+    // Test 2: Unauthenticated Access
+    @Test
+    void test2_accessFailsWithoutToken() {
+        assertThrows(WebClientResponseException.Unauthorized.class, () -> {
+            webClient.get()
+                    .uri("/admin/audit-logs")
+                    .retrieve()
+                    .toBodilessEntity()
+                    .block();
+        });
+    }
+
+    // Test 3: Token Revocation (The "Beefy" Test)
+    @Test
+    void test3_revokedTokenFailsAuthentication() {
+        // 1. Get a fresh token
+        String token = getAccessToken(ADMIN_USERNAME, ADMIN_PASSWORD);
+
+        // 2. Revoke the token by calling /auth/logout
+        webClient.post()
+                .uri("/auth/logout")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .retrieve()
+                .toBodilessEntity()
+                .block()
+                .getStatusCode()
+                .is2xxSuccessful(); // Assert 200/204 on successful revocation
+
+        // 3. Try to access the secured endpoint with the revoked token
+        assertThrows(WebClientResponseException.Unauthorized.class, () -> {
+            webClient.get()
+                    .uri("/admin/audit-logs")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                    .retrieve()
+                    .toBodilessEntity()
+                    .block();
+        }, "Revoked token should have resulted in 401 Unauthorized.");
+    }
+}
