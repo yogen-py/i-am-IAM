@@ -118,5 +118,3 @@ This project implements a **Shift-Left Security** approach within GitHub Actions
 
 
 ---
-
-Would you like me to help you set up the **GitHub Actions Secret** for your Trivy scan or push this README to your repo?
