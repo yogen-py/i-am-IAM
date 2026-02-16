@@ -113,8 +113,4 @@ This project implements a **Shift-Left Security** approach within GitHub Actions
 | `GET` | `/api/public/health` | `Public` | Liveness/Readiness check. |
 | `POST` | `/admin/users` | `ROLE_ADMIN` | Provision new user identities. |
 
----
 
-
-
----
